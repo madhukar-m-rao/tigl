@@ -185,14 +185,24 @@ Handle(V3d_Viewer) TIGLViewerContext::createViewer( const Standard_ExtString aNa
 */
 void TIGLViewerContext::deleteAllObjects()
 {
-    AIS_ListOfInteractive aList;
-    myContext->DisplayedObjects( aList );
-    AIS_ListIteratorOfListOfInteractive aListIterator;
-    for ( aListIterator.Initialize( aList ); aListIterator.More(); aListIterator.Next() ) {
-        myContext->Remove( aListIterator.Value(), Standard_False);
+    if (!myContext.IsNull()) {
+        // get list of all objects
+        std::vector<Handle(AIS_InteractiveObject)> objects;
+
+        AIS_ListOfInteractive aList;
+        myContext->DisplayedObjects( aList );
+        AIS_ListIteratorOfListOfInteractive aListIterator;
+        for ( aListIterator.Initialize( aList ); aListIterator.More(); aListIterator.Next() ) {
+            objects.push_back(aListIterator.Value());
+        }
+
+        if (objects.size() > 0) {
+            QUndoCommand* command = new TiGLViewer::DeleteObjects(myContext, objects);
+            myUndoStack->push(command);
+        }
     }
-    myContext->UpdateCurrentViewer();
 }
+
 /*! 
 \brief    Sets the privileged plane to the XY Axis.  
 */
@@ -334,7 +344,8 @@ void TIGLViewerContext::displayShape(const TopoDS_Shape& loft, bool updateViewer
     }
 #endif
 
-    myContext->Display(shape, updateViewer);
+    QUndoCommand* command = new TiGLViewer::DrawObjects(myContext, shape, "geometry", updateViewer);
+    myUndoStack->push(command);
     
     if (settings.enumerateFaces()) {
         TopTools_IndexedMapOfShape shapeMap;
@@ -402,12 +413,12 @@ void TIGLViewerContext::displayPoint(const gp_Pnt& aPoint,
     }
     else {
         Handle(ISession_Point) aGraphicPoint = new ISession_Point(aPoint.X(), aPoint.Y(), aPoint.Z());
-        myContext->Display(aGraphicPoint,UpdateViewer);
         Handle(ISession_Text) aGraphicText = new ISession_Text(aText, aPoint.X() + anXoffset,
                                                      aPoint.Y() + anYoffset,
                                                      aPoint.Z() + aZoffset);
         aGraphicText->SetScale(TextScale);
-        myContext->Display(aGraphicText,UpdateViewer);
+        QUndoCommand* command = new TiGLViewer::DrawObjects(myContext, {aGraphicPoint, aGraphicText}, "point", UpdateViewer);
+        myUndoStack->push(command);
     }
 
 }
@@ -429,12 +440,12 @@ void TIGLViewerContext::displayVector(const gp_Pnt& aPoint,
                                       Standard_Real TextScale)
 {
     Handle(ISession_Direction) aGraphicDirection = new ISession_Direction(aPoint, aVec);
-    myContext->Display(aGraphicDirection,UpdateViewer);
     Handle(ISession_Text) aGraphicText = new ISession_Text(aText, aPoint.X() + anXoffset,
                                                  aPoint.Y() + anYoffset,
                                                  aPoint.Z() + aZoffset);
     aGraphicText->SetScale(TextScale);
-    myContext->Display(aGraphicText,UpdateViewer);
+    QUndoCommand* command = new TiGLViewer::DrawObjects(myContext, {aGraphicDirection, aGraphicText}, "vector", UpdateViewer);
+    myUndoStack->push(command);
 }
 
 bool TIGLViewerContext::hasSelectedShapes() const
